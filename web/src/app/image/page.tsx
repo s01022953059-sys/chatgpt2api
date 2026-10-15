@@ -21,6 +21,7 @@ import {
   createImageEditTask,
   createImageGenerationTask,
   fetchAccounts,
+  fetchImageQuota,
   fetchModels,
   fetchImageTasks,
   resumeImagePoll,
@@ -450,7 +451,7 @@ async function recoverConversationHistory(items: ImageConversation[]) {
 
 
 function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
-  const didLoadQuotaRef = useRef(false);
+  const quotaRequestRef = useRef(0);
   const conversationsRef = useRef<ImageConversation[]>([]);
   const loadCancelledRef = useRef(false);
   const resultsViewportRef = useRef<HTMLDivElement>(null);
@@ -723,38 +724,38 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
   }, []);
 
   const loadQuota = useCallback(async () => {
+    const requestId = ++quotaRequestRef.current;
     if (!isAdmin) {
-      setAvailableQuota("--");
-      return;
-    }
-    if (isDirectMode) {
-      setAvailableQuota("直连");
+      setAvailableQuota("额度仅管理员可见");
       return;
     }
     try {
-      const data = await fetchAccounts();
-      setAvailableQuota(formatAvailableQuota(data.items));
+      const quota = await fetchImageQuota(imageModel);
+      let text = "额度暂无法获取";
+      if (quota.source === "pool") {
+        const data = await fetchAccounts();
+        text = `剩余额度 ${formatAvailableQuota(data.items)}`;
+      } else if (quota.status === "ok" && typeof quota.estimated_images === "number") {
+        text = `预计可生成 ${quota.estimated_images} 张`;
+      }
+      if (requestId === quotaRequestRef.current) setAvailableQuota(text);
     } catch {
-      setAvailableQuota((prev) => (prev === "加载中..." ? "--" : prev));
+      if (requestId === quotaRequestRef.current) setAvailableQuota("额度暂无法获取");
     }
-  }, [isAdmin, isDirectMode]);
+  }, [isAdmin, imageModel]);
 
   useEffect(() => {
-    if (didLoadQuotaRef.current) {
-      return;
-    }
-    didLoadQuotaRef.current = true;
-
-    const handleFocus = () => {
-      void loadQuota();
-    };
-
-    void loadQuota();
-    window.addEventListener("focus", handleFocus);
+    setAvailableQuota("额度加载中...");
+    const refresh = () => { void loadQuota(); };
+    refresh();
+    const timer = window.setInterval(refresh, 60000);
+    window.addEventListener("focus", refresh);
     return () => {
-      window.removeEventListener("focus", handleFocus);
+      ++quotaRequestRef.current;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
     };
-  }, [isAdmin, loadQuota]);
+  }, [loadQuota]);
 
   // 切换会话时保存旧会话滚动位置，并隐藏容器防止闪烁
   useLayoutEffect(() => {

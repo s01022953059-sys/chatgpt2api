@@ -926,3 +926,15 @@ export async function testProxyClearance(targetUrl?: string) {
     body: { target_url: targetUrl ?? "https://chatgpt.com" },
   });
 }
+
+export type ImageQuota = {
+  status: "ok" | "unavailable";
+  source: "balance" | "pool";
+  estimated_images?: number;
+  balance_usd?: string;
+  price_usd?: string;
+};
+
+export async function fetchImageQuota(model: string) {
+  return httpRequest<ImageQuota>(`/api/image-quota?model=${encodeURIComponent(model)}`);
+}

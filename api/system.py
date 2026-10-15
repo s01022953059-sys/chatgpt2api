@@ -23,6 +23,7 @@ from services.image_service import (
 )
 from services.image_storage_service import ImageStorageError, image_storage_service
 from services.image_tags_service import delete_tag, get_all_tags, set_tags
+from services.image_quota_service import get_image_quota
 from services.log_service import log_service
 from services.proxy_service import proxy_settings, test_clearance, test_proxy
 
@@ -75,6 +76,11 @@ def create_router(app_version: str) -> APIRouter:
     @router.get("/version")
     async def get_version():
         return {"version": app_version}
+
+    @router.get("/api/image-quota")
+    async def image_quota(model: str = "gpt-image-2.5-flare", authorization: str | None = Header(default=None)):
+        require_admin(authorization)
+        return await run_in_threadpool(get_image_quota, model)
 
     @router.get("/api/settings")
     async def get_settings(authorization: str | None = Header(default=None)):
