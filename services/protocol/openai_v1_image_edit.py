@@ -5,6 +5,7 @@ from typing import Any, Iterator
 
 from PIL import Image
 
+from services.config import config
 from services.protocol.conversation import (
     ConversationRequest,
     ImageGenerationError,
@@ -14,6 +15,7 @@ from services.protocol.conversation import (
     stream_image_chunks,
     stream_image_outputs_with_pool,
 )
+from services.protocol.openai_api_direct import edit_images as direct_edit_images
 from utils.image_tokens import count_image_inputs_tokens, count_image_output_items_tokens, image_usage
 
 
@@ -63,6 +65,22 @@ def handle(body: dict[str, Any]) -> dict[str, Any] | Iterator[dict[str, Any]]:
     encoded_images = encode_images(images)
     if not encoded_images:
         raise ImageGenerationError("image is required")
+
+    # Direct API key mode: bypass account pool, call third-party API directly
+    if config.openai_api_key:
+        body["images"] = encoded_images
+        outputs = direct_edit_images(body)
+        if body.get("stream"):
+            return stream_image_chunks(outputs)
+        result = collect_image_outputs(outputs)
+        result["usage"] = image_usage(
+            input_text_tokens=count_text_tokens(prompt, model),
+            input_image_tokens=count_image_inputs_tokens(images, model),
+            output_tokens=count_image_output_items_tokens(result.get("data"), size, quality),
+        )
+        return result
+
+    # Default mode: account pool with ChatGPT reverse proxy
     outputs = stream_image_outputs_with_pool(ConversationRequest(
         prompt=prompt,
         model=model,

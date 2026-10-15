@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from threading import Event, Thread
+from typing import Any
+from urllib.parse import unquote
 
 from fastapi import HTTPException, Request
 
 from services.account_service import account_service
 from services.auth_service import auth_service
 from services.config import config
+from services.content_filter import check_request
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 WEB_DIST_DIR = BASE_DIR / "web_dist"
@@ -46,8 +50,29 @@ def require_admin(authorization: str | None) -> dict[str, object]:
     return identity
 
 
+async def filter_or_log(call: Any, text: str) -> None:
+    """Run content filter and log if it raises.
+
+    Re-exported from api.ai so legacy callers can `from api.support import filter_or_log`.
+    """
+    try:
+        check_request(text)
+    except HTTPException as exc:
+        call.log("调用失败", status="failed", error=str(exc.detail))
+        raise
+
+
 def resolve_image_base_url(request: Request) -> str:
-    return config.base_url or f"{request.url.scheme}://{request.headers.get('host', request.url.netloc)}"
+    forwarded_proto = str(request.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
+    host = request.headers.get("host") or request.url.netloc
+    if config.base_url:
+        return config.base_url
+    scheme = forwarded_proto or request.url.scheme
+    if scheme not in {"http", "https"}:
+        scheme = "https"
+    if request.url.netloc in {"localhost", "127.0.0.1", "0.0.0.0"}:
+        return f"https://image.taqi.cc"
+    return f"{scheme}://{host}"
 
 
 def raise_image_quota_error(exc: Exception) -> None:
@@ -117,7 +142,11 @@ def start_limited_account_watcher(stop_event: Event) -> Thread:
 def resolve_web_asset(requested_path: str) -> Path | None:
     if not WEB_DIST_DIR.exists():
         return None
-    clean_path = requested_path.strip("/")
+    decoded = unquote(requested_path or "")
+    cleaned = re.match(r"^https?://[^/]+/(.*)$", decoded)
+    if cleaned:
+        decoded = cleaned.group(1)
+    clean_path = decoded.strip("/")
     base_dir = WEB_DIST_DIR.resolve()
     candidates = [base_dir / "index.html"] if not clean_path else [
         base_dir / Path(clean_path),

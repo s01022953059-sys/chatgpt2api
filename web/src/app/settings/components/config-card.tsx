@@ -28,18 +28,18 @@ export function ConfigCard() {
   const setImageAccountConcurrency = useSettingsStore((state) => state.setImageAccountConcurrency);
   const setImageSettleEnabled = useSettingsStore((state) => state.setImageSettleEnabled);
   const setImageRemoveConversationAfterResult = useSettingsStore((state) => state.setImageRemoveConversationAfterResult);
-  const setImageRemoveConversationAlways = useSettingsStore((state) => state.setImageRemoveConversationAlways);
   const setImageSettleSecs = useSettingsStore((state) => state.setImageSettleSecs);
   const setImageTimeoutRetrySecs = useSettingsStore((state) => state.setImageTimeoutRetrySecs);
   const setAutoRemoveInvalidAccounts = useSettingsStore((state) => state.setAutoRemoveInvalidAccounts);
   const setAutoRemoveRateLimitedAccounts = useSettingsStore((state) => state.setAutoRemoveRateLimitedAccounts);
   const setAutoReloginAfterRefresh = useSettingsStore((state) => state.setAutoReloginAfterRefresh);
+  const setOpenaiApiBase = useSettingsStore((state) => state.setOpenaiApiBase);
+  const setOpenaiApiProSize = useSettingsStore((state) => state.setOpenaiApiProSize);
+  const setOpenaiApiUserAgent = useSettingsStore((state) => state.setOpenaiApiUserAgent);
   const setLogLevel = useSettingsStore((state) => state.setLogLevel);
   const setProxy = useSettingsStore((state) => state.setProxy);
   const setBaseUrl = useSettingsStore((state) => state.setBaseUrl);
   const setGlobalSystemPrompt = useSettingsStore((state) => state.setGlobalSystemPrompt);
-  const setDefaultUpstreamModelName = useSettingsStore((state) => state.setDefaultUpstreamModelName);
-  const setDefaultThinkingEffort = useSettingsStore((state) => state.setDefaultThinkingEffort);
   const setSensitiveWordsText = useSettingsStore((state) => state.setSensitiveWordsText);
   const setAIReviewField = useSettingsStore((state) => state.setAIReviewField);
   const setImageStorageField = useSettingsStore((state) => state.setImageStorageField);
@@ -149,33 +149,53 @@ export function ConfigCard() {
             />
             <p className="text-xs text-stone-500">用于生成图片结果的访问前缀地址。</p>
           </div>
-          <div className="space-y-2">
-            <label className="text-sm text-stone-700">默认请求上游模型名称</label>
-            <Input
-              value={String(config?.default_upstream_model_name || "")}
-              onChange={(event) => setDefaultUpstreamModelName(event.target.value)}
-              placeholder="gpt-5-5"
-              className="h-10 rounded-xl border-stone-200 bg-white"
-            />
-            <p className="text-xs text-stone-500">gpt-image-2 发起图片请求时使用的上游模型名称，默认 gpt-5-5。</p>
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm text-stone-700">默认思考强度</label>
-            <Select
-              value={String(config?.default_thinking_effort || "auto")}
-              onValueChange={(value) => setDefaultThinkingEffort(value as "auto" | "standard" | "extended" | "max")}
-            >
-              <SelectTrigger className="h-10 rounded-xl border-stone-200 bg-white">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="auto">Auto（不传递）</SelectItem>
-                <SelectItem value="standard">Standard</SelectItem>
-                <SelectItem value="extended">Extended</SelectItem>
-                <SelectItem value="max">Max</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-stone-500">模型名称以 -standard、-extended 或 -max 结尾时，模型后缀优先。</p>
+          <div className="space-y-2 md:col-span-2">
+            <div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm leading-6 text-stone-600">
+              第三方 OpenAI 兼容 API（直连模式）。仅当 <code>openai_api_key</code> 已配置时启用；留空则使用本服务的账号池。
+              <span className="ml-1 inline-flex items-center rounded-full bg-white px-2 py-0.5 text-[11px] text-stone-500">
+                {config?.openai_api_key_configured ? "已配置 API Key" : "未配置 API Key"}
+              </span>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <label className="text-sm text-stone-700">第三方 API Base URL</label>
+                <Input
+                  value={String(config?.openai_api_base || "")}
+                  onChange={(event) => setOpenaiApiBase(event.target.value)}
+                  placeholder="https://api.example.com"
+                  className="h-10 rounded-xl border-stone-200 bg-white"
+                />
+                <p className="text-xs text-stone-500">通常形如 https://api.openai.com；不要包含 /v1 路径段。</p>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm text-stone-700">Pro 模型精度</label>
+                <Select
+                  value={String(config?.openai_api_pro_size || "2K")}
+                  onValueChange={(value) => setOpenaiApiProSize(value)}
+                >
+                  <SelectTrigger className="h-10 rounded-xl border-stone-200 bg-white">
+                    <SelectValue placeholder="选择精度" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="2K">2K (2048×2048)</SelectItem>
+                    <SelectItem value="4K">4K (2560×2560)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-stone-500">仅对 gpt-image-2-pro 模型生效。</p>
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <label className="text-sm text-stone-700">User-Agent</label>
+                <Input
+                  value={String(config?.openai_api_user_agent || "")}
+                  onChange={(event) => setOpenaiApiUserAgent(event.target.value)}
+                  placeholder="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
+                  className="h-10 rounded-xl border-stone-200 bg-white font-mono text-xs"
+                />
+                <p className="text-xs text-stone-500">
+                  留空将使用内置浏览器 User-Agent；若对方站点 UA 白名单更新，可在此覆盖。
+                </p>
+              </div>
+            </div>
           </div>
           <div className="space-y-2">
             <label className="text-sm text-stone-700">图片自动清理</label>
@@ -236,16 +256,6 @@ export function ConfigCard() {
               <span className="text-sm text-stone-700">出图后移除本地对话</span>
             </div>
             <p className="text-xs text-stone-500">成功拿到图片后，异步隐藏 ChatGPT 侧对应的本地对话记录。</p>
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-center gap-3 rounded-xl border border-stone-200 bg-white px-4 py-3">
-              <Checkbox
-                checked={Boolean(config?.image_remove_conversation_always)}
-                onCheckedChange={(checked) => setImageRemoveConversationAlways(Boolean(checked))}
-              />
-              <span className="text-sm text-stone-700">没出图也移除本地对话</span>
-            </div>
-            <p className="text-xs text-stone-500">失败、超时或只返回文本时也一并隐藏对话记录（打开后包含出图成功的情况）。</p>
           </div>
           <div className="space-y-2">
             <label className="text-sm text-stone-700">图片超时继续等待时间</label>

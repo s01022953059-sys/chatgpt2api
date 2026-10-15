@@ -54,6 +54,14 @@ DEFAULT_PROXY_RUNTIME_USER_AGENT = (
     "Chrome/145.0.0.0 Safari/537.36"
 )
 
+# 第三方 OpenAI 兼容 API 默认 User-Agent，避免被 Cloudflare Error 1010
+# （基于 UA 签名拒绝）拦截。留空时使用此兜底值。
+DEFAULT_OPENAI_API_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/145.0.0.0 Safari/537.36"
+)
+
 DEFAULT_PROXY_RUNTIME = {
     "enabled": False,
     "egress_mode": "direct",
@@ -454,9 +462,76 @@ class ConfigStore:
         return bool(value)
 
     @property
-    def image_remove_conversation_always(self) -> bool:
-        """无论是否出图，画图请求结束后都异步隐藏 ChatGPT 本地对话记录。"""
-        return _normalize_bool(self.data.get("image_remove_conversation_always"), False)
+    def openai_api_key(self) -> str:
+        """第三方 OpenAI 兼容 API Key，用于绕过账号池直连图片生成。"""
+        return str(
+            os.getenv("CHATGPT2API_OPENAI_API_KEY")
+            or self.data.get("openai_api_key")
+            or ""
+        ).strip()
+
+    @property
+    def openai_api_base(self) -> str:
+        """第三方 OpenAI 兼容 API Base URL。"""
+        return str(
+            os.getenv("CHATGPT2API_OPENAI_API_BASE")
+            or self.data.get("openai_api_base")
+            or ""
+        ).strip().rstrip("/")
+
+    @property
+    def openai_api_models(self) -> list[str]:
+        """第三方 API 可用的模型列表。"""
+        env_value = os.getenv("CHATGPT2API_OPENAI_API_MODELS")
+        if env_value:
+            return [item.strip() for item in env_value.split(",") if item.strip()]
+        raw = self.data.get("openai_api_models")
+        if isinstance(raw, list):
+            return [str(item).strip() for item in raw if str(item).strip()]
+        if isinstance(raw, str) and raw.strip():
+            return [item.strip() for item in raw.split(",") if item.strip()]
+        return ["gpt-image-2", "gpt-image-2-pro"]
+
+    @property
+    def openai_api_pro_size(self) -> str:
+        """Pro 模型出图精度，支持 2K / 4K。"""
+        value = str(os.getenv("CHATGPT2API_OPENAI_API_PRO_SIZE") or self.data.get("openai_api_pro_size") or "2K").strip().upper()
+        return value if value in {"2K", "4K"} else "2K"
+
+    @property
+    def openai_api_user_agent(self) -> str:
+        """第三方 OpenAI 兼容 API 自定义 User-Agent。
+
+        留空时返回内置的 Chrome 桌面 UA 兜底，避免被 Cloudflare 等 WAF
+        因默认 `python-httpx/<ver>` UA 拦截（Error 1010）。
+        """
+        value = str(
+            os.getenv("CHATGPT2API_OPENAI_API_USER_AGENT")
+            or self.data.get("openai_api_user_agent")
+            or ""
+        ).strip()
+        return value or DEFAULT_OPENAI_API_USER_AGENT
+
+    @property
+    def openai_api_proxy(self) -> str:
+        """第三方 OpenAI 兼容 API 出站代理 URL（可选）。
+
+        直连 API 的所有 httpx 请求（generations / edits / 轮询 / 图片下载）
+        配置后统一走该代理出口。用于 VPS 数据中心 IP 被上游 Cloudflare
+        WAF 拦截（HTTP 403 "Sorry, you have been blocked"）的场景。
+        支持 http:// 与 socks5://（socks 需安装 socksio）。
+        留空时直连。
+        """
+        return str(
+            os.getenv("CHATGPT2API_OPENAI_API_PROXY")
+            or self.data.get("openai_api_proxy")
+            or ""
+        ).strip()
+
+    @property
+    def openai_api_key_configured(self) -> bool:
+        """是否已配置第三方 OpenAI 兼容 API Key（不返回实际 Key）。"""
+        return bool(self.openai_api_key)
 
     @property
     def image_settle_secs(self) -> float:
@@ -510,15 +585,6 @@ class ConfigStore:
         return str(self.data.get("global_system_prompt") or "").strip()
 
     @property
-    def default_upstream_model_name(self) -> str:
-        return str(self.data.get("default_upstream_model_name") or "gpt-5-5").strip()
-
-    @property
-    def default_thinking_effort(self) -> str:
-        value = str(self.data.get("default_thinking_effort") or "auto").strip().lower()
-        return value if value in {"auto", "standard", "extended", "max"} else "auto"
-
-    @property
     def images_dir(self) -> Path:
         path = DATA_DIR / "images"
         path.mkdir(parents=True, exist_ok=True)
@@ -570,7 +636,12 @@ class ConfigStore:
         data["image_account_concurrency"] = self.image_account_concurrency
         data["image_parallel_generation"] = self.image_parallel_generation
         data["image_remove_conversation_after_result"] = self.image_remove_conversation_after_result
-        data["image_remove_conversation_always"] = self.image_remove_conversation_always
+        data["openai_api_key_configured"] = bool(self.openai_api_key)
+        data["openai_api_base"] = self.openai_api_base
+        data["openai_api_models"] = self.openai_api_models
+        data["openai_api_pro_size"] = self.openai_api_pro_size
+        data["openai_api_user_agent"] = self.openai_api_user_agent
+        data["openai_api_proxy"] = self.openai_api_proxy
         data["auto_remove_invalid_accounts"] = self.auto_remove_invalid_accounts
         data["auto_remove_rate_limited_accounts"] = self.auto_remove_rate_limited_accounts
         data["auto_relogin_after_refresh"] = self.auto_relogin_after_refresh
@@ -578,8 +649,6 @@ class ConfigStore:
         data["sensitive_words"] = self.sensitive_words
         data["ai_review"] = self.ai_review
         data["global_system_prompt"] = self.global_system_prompt
-        data["default_upstream_model_name"] = self.default_upstream_model_name
-        data["default_thinking_effort"] = self.default_thinking_effort
         data["backup"] = self.get_backup_settings()
         data["image_storage"] = self.get_image_storage_settings()
         data["chat_completion_cache"] = self.get_chat_completion_cache_settings()

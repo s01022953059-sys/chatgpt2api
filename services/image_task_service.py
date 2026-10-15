@@ -61,6 +61,25 @@ def _collect_image_urls(data: list[Any]) -> list[str]:
     return urls
 
 
+def _strip_b64(data: Any) -> Any:
+    """Strip b64_json from image data before persisting to disk.
+
+    b64 payloads are large (often multi-MB) and bloat image_tasks.json,
+    which inflates memory on every save. The saved URL is sufficient for the
+    frontend (which falls back to url) and the log, so keep only url /
+    revised_prompt / size metadata and drop the raw base64 bytes.
+    """
+    if not isinstance(data, list):
+        return data
+    stripped: list[Any] = []
+    for item in data:
+        if isinstance(item, dict) and "b64_json" in item:
+            stripped.append({k: v for k, v in item.items() if k != "b64_json"})
+        else:
+            stripped.append(item)
+    return stripped
+
+
 def _public_task(task: dict[str, Any]) -> dict[str, Any]:
     item = {
         "id": task.get("id"),
@@ -80,6 +99,9 @@ def _public_task(task: dict[str, Any]) -> dict[str, Any]:
         item["usage"] = task.get("usage")
     if task.get("error"):
         item["error"] = task.get("error")
+    for field in ("error_code", "error_stage", "diagnostic_id", "upstream_status", "retryable", "attempts"):
+        if task.get(field) is not None:
+            item[field] = task.get(field)
     if task.get("progress"):
         item["progress"] = task.get("progress")
     if task.get("duration_ms") is not None:
@@ -136,7 +158,7 @@ class ImageTaskService:
             "n": 1,
             "size": size,
             "quality": quality,
-            "response_format": "url",
+            "response_format": "b64_json",
             "base_url": base_url,
         }
         return self._submit(identity, client_task_id=client_task_id, mode="generate", payload=payload)
@@ -162,7 +184,7 @@ class ImageTaskService:
             "n": 1,
             "size": size,
             "quality": quality,
-            "response_format": "url",
+            "response_format": "b64_json",
             "base_url": base_url,
         }
         return self._submit(identity, client_task_id=client_task_id, mode="edit", payload=payload)
@@ -275,7 +297,10 @@ class ImageTaskService:
                 raise error
             usage = result.get("usage")
             duration_ms = int((time.time() - started) * 1000)
-            self._update_task(key, status=TASK_STATUS_SUCCESS, data=data, usage=usage, error="", duration_ms=duration_ms)
+            # b64_json is intentionally NOT persisted: it bloats image_tasks.json
+            # (rewritten on every state change) and caused OOM crashes on the low-memory
+            # VPS. The saved url is enough for the frontend to render the image.
+            self._update_task(key, status=TASK_STATUS_SUCCESS, data=_strip_b64(data), usage=usage, error="", duration_ms=duration_ms)
             self._log_call(
                 identity,
                 mode,
@@ -290,10 +315,28 @@ class ImageTaskService:
             error_message = str(exc) or "image task failed"
             account_email = _clean(getattr(exc, "account_email", ""))
             conversation_id = _clean(getattr(exc, "conversation_id", ""))
+            diagnostic_id = _clean(getattr(exc, "diagnostic_id", ""))
+            upstream_status = getattr(exc, "upstream_status", None)
+            error_code = _clean(getattr(exc, "error_code", ""))
+            error_stage = _clean(getattr(exc, "error_stage", ""))
+            retryable = getattr(exc, "retryable", None)
+            attempts = getattr(exc, "attempts", None)
             duration_ms = int((time.time() - started) * 1000)
+            metadata = {
+                field: value
+                for field, value in {
+                    "conversation_id": conversation_id,
+                    "diagnostic_id": diagnostic_id,
+                    "upstream_status": upstream_status,
+                    "error_code": error_code,
+                    "error_stage": error_stage,
+                    "retryable": retryable,
+                    "attempts": attempts,
+                }.items()
+                if value not in (None, "")
+            }
             self._update_task(key, status=TASK_STATUS_ERROR, error=error_message, data=[],
-                              duration_ms=duration_ms,
-                              **({"conversation_id": conversation_id} if conversation_id else {}))
+                              duration_ms=duration_ms, **metadata)
             self._log_call(
                 identity,
                 mode,
@@ -394,13 +437,18 @@ class ImageTaskService:
             }
             data = item.get("data")
             if isinstance(data, list):
-                task["data"] = data
+                # Strip any historically-persisted b64_json so the in-memory store
+                # and subsequent saves never carry the large base64 payload again.
+                task["data"] = _strip_b64(data)
             usage = item.get("usage")
             if isinstance(usage, dict):
                 task["usage"] = usage
             error = _clean(item.get("error"))
             if error:
                 task["error"] = error
+            for field in ("error_code", "error_stage", "diagnostic_id", "upstream_status", "retryable", "attempts"):
+                if field in item:
+                    task[field] = item.get(field)
             tasks[_task_key(owner, task_id)] = task
         return tasks
 
@@ -519,7 +567,7 @@ class ImageTaskService:
                 "",
                 int(time.time()),
             )["data"]
-            self._update_task(key, status=TASK_STATUS_SUCCESS, data=data, error="", duration_ms=int((time.time() - started) * 1000))
+            self._update_task(key, status=TASK_STATUS_SUCCESS, data=_strip_b64(data), error="", duration_ms=int((time.time() - started) * 1000))
             self._log_call(
                 identity,
                 mode,

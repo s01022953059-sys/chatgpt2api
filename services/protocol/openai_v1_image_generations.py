@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Iterator
 
+from services.config import config
 from services.protocol.conversation import (
     ConversationRequest,
     collect_image_outputs,
@@ -9,6 +10,7 @@ from services.protocol.conversation import (
     stream_image_chunks,
     stream_image_outputs_with_pool,
 )
+from services.protocol.openai_api_direct import generate_images as direct_generate_images
 from utils.image_tokens import count_image_output_items_tokens, image_usage
 
 
@@ -21,6 +23,20 @@ def handle(body: dict[str, Any]) -> dict[str, Any] | Iterator[dict[str, Any]]:
     response_format = str(body.get("response_format") or "b64_json")
     base_url = str(body.get("base_url") or "") or None
     progress_callback = body.get("progress_callback")
+
+    # Direct API key mode: bypass account pool, call third-party API directly
+    if config.openai_api_key:
+        outputs = direct_generate_images(body)
+        if body.get("stream"):
+            return stream_image_chunks(outputs)
+        result = collect_image_outputs(outputs)
+        result["usage"] = image_usage(
+            input_text_tokens=count_text_tokens(prompt, model),
+            output_tokens=count_image_output_items_tokens(result.get("data"), size, quality),
+        )
+        return result
+
+    # Default mode: account pool with ChatGPT reverse proxy
     outputs = stream_image_outputs_with_pool(ConversationRequest(
         prompt=prompt,
         model=model,

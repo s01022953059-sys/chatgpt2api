@@ -22,6 +22,11 @@ export type StoredImage = {
   url?: string;
   revised_prompt?: string;
   error?: string;
+  errorCode?: string;
+  errorStage?: string;
+  diagnosticId?: string;
+  upstreamStatus?: number;
+  retryable?: boolean;
   startTime?: number;
   elapsedSecs?: number;
   elapsedUpdatedAt?: number;

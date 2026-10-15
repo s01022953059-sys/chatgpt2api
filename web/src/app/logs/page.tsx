@@ -6,7 +6,7 @@ import { toast } from "sonner";
 
 import { DateRangeFilter } from "@/components/date-range-filter";
 import { ImageLightbox } from "@/components/image-lightbox";
-import { ImageThumbnail, getImageThumbnailUrl } from "@/components/image-thumbnail";
+import { ImageThumbnail, getImageThumbnailUrl, upgradeToHttps } from "@/components/image-thumbnail";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -305,7 +305,7 @@ function LogsContent() {
                         setLightboxOpen(true);
                       }}
                     >
-                      <img src={url} alt="" className="h-full w-full object-cover" />
+                      <img src={upgradeToHttps(url)} alt="" className="h-full w-full object-cover" />
                     </button>
                   ))}
                 </div>

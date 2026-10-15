@@ -12,15 +12,23 @@ type ImageThumbnailProps = {
   imageClassName?: string;
 };
 
+export function upgradeToHttps(url: string) {
+  if (typeof window === "undefined") return url;
+  if (window.location.protocol !== "https:") return url;
+  if (url.startsWith("https://")) return url;
+  if (url.startsWith("http://")) return `https://${url.slice(7)}`;
+  return url;
+}
+
 export function getImageThumbnailUrl(src: string) {
   const marker = "/images/";
   const index = src.indexOf(marker);
-  if (index < 0) return src;
-  return `${src.slice(0, index)}/image-thumbnails/${src.slice(index + marker.length)}`;
+  if (index < 0) return upgradeToHttps(src);
+  return upgradeToHttps(`${src.slice(0, index)}/image-thumbnails/${src.slice(index + marker.length)}`);
 }
 
 export function ImageThumbnail({ src, thumbnailSrc, alt = "", className, imageClassName }: ImageThumbnailProps) {
-  const initialSrc = useMemo(() => thumbnailSrc || getImageThumbnailUrl(src), [src, thumbnailSrc]);
+  const initialSrc = useMemo(() => upgradeToHttps(thumbnailSrc || getImageThumbnailUrl(src)), [src, thumbnailSrc]);
   const [currentSrc, setCurrentSrc] = useState(initialSrc);
 
   useEffect(() => {
@@ -37,7 +45,7 @@ export function ImageThumbnail({ src, thumbnailSrc, alt = "", className, imageCl
         decoding="async"
         onError={() => {
           if (currentSrc !== src) {
-            setCurrentSrc(src);
+            setCurrentSrc(upgradeToHttps(src));
           }
         }}
       />

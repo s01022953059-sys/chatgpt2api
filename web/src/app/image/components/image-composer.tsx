@@ -25,6 +25,7 @@ type ImageComposerProps = {
   referenceImages: Array<{ name: string; dataUrl: string }>;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   fileInputRef: RefObject<HTMLInputElement | null>;
+  isDirectMode?: boolean;
   onPromptChange: (value: string) => void;
   onImageCountChange: (value: string) => void;
   onImageRatioChange: (value: string) => void;
@@ -67,10 +68,10 @@ const aspectOptions = [
   { ratio: "1:1", tier: "1k", width: "1024", height: "1024", label: "1:1", icon: Square },
   { ratio: "2:3", tier: "1k", width: "1024", height: "1536", label: "2:3", icon: RectangleVertical },
   { ratio: "3:2", tier: "1k", width: "1536", height: "1024", label: "3:2", icon: RectangleHorizontal },
-  { ratio: "3:4", tier: "1k", width: "1024", height: "1365", label: "3:4", icon: RectangleVertical },
-  { ratio: "4:3", tier: "1k", width: "1365", height: "1024", label: "4:3", icon: RectangleHorizontal },
-  { ratio: "9:16", tier: "1k", width: "1088", height: "1920", label: "9:16", icon: RectangleVertical },
-  { ratio: "16:9", tier: "1k", width: "1920", height: "1088", label: "16:9", icon: RectangleHorizontal },
+  { ratio: "3:4", tier: "1k", width: "768", height: "1024", label: "3:4", icon: RectangleVertical },
+  { ratio: "4:3", tier: "1k", width: "1024", height: "768", label: "4:3", icon: RectangleHorizontal },
+  { ratio: "9:16", tier: "1k", width: "864", height: "1536", label: "9:16", icon: RectangleVertical },
+  { ratio: "16:9", tier: "1k", width: "1536", height: "864", label: "16:9", icon: RectangleHorizontal },
   { ratio: "1:1", tier: "2k", width: "2048", height: "2048", label: "1:1(2k)", icon: Square },
   { ratio: "16:9", tier: "2k", width: "2560", height: "1440", label: "16:9(2k)", icon: RectangleHorizontal },
   { ratio: "9:16", tier: "2k", width: "1440", height: "2560", label: "9:16(2k)", icon: RectangleVertical },
@@ -95,6 +96,7 @@ export function ImageComposer({
   referenceImages,
   textareaRef,
   fileInputRef,
+  isDirectMode = false,
   onPromptChange,
   onImageCountChange,
   onImageRatioChange,
@@ -318,7 +320,11 @@ export function ImageComposer({
                     <span className="hidden sm:inline">{referenceImages.length > 0 ? "添加参考图" : "上传"}</span>
                   </Button>
                   <div className="shrink-0 rounded-full bg-stone-100 px-2 py-1 text-[10px] font-medium text-stone-600 sm:px-3 sm:py-2 sm:text-xs">
-                    <span className="hidden sm:inline">剩余额度 </span>{availableQuota}
+                    {isDirectMode ? "直连" : (
+                      <>
+                        <span className="hidden sm:inline">剩余额度 </span>{availableQuota}
+                      </>
+                    )}
                   </div>
                   {activeTaskCount > 0 && (
                     <div className="flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-700 sm:gap-1.5 sm:px-3 sm:py-2 sm:text-xs">

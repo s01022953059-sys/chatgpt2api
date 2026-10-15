@@ -2,13 +2,33 @@ from __future__ import annotations
 
 from typing import Any
 
+from services.config import config
 from services.account_service import account_service
-from services.model_service import model_catalog_service
+from services.openai_backend_api import OpenAIBackendAPI
 from utils.helper import CODEX_IMAGE_MODEL
 
 
 def list_models() -> dict[str, Any]:
-    result = model_catalog_service.list_models()
+    # Direct API mode: return configured models, skip account pool
+    if config.openai_api_key:
+        models = config.openai_api_models
+        return {
+            "object": "list",
+            "data": [
+                {
+                    "id": model,
+                    "object": "model",
+                    "created": 0,
+                    "owned_by": "chatgpt2api",
+                    "permission": [],
+                    "root": model,
+                    "parent": None,
+                }
+                for model in models
+            ],
+        }
+
+    result = OpenAIBackendAPI().list_models()
     data = result.get("data")
     if not isinstance(data, list):
         return result

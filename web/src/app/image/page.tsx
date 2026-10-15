@@ -155,7 +155,7 @@ function normalizeStoredImageModel(value: string | null, availableModels: ImageM
   if (normalized && availableModels.includes(normalized)) {
     return normalized;
   }
-  return availableModels[0] || "gpt-image-2";
+  return availableModels[0] || "gpt-image-2.5-flare";
 }
 
 function buildReferenceImageFromResult(image: StoredImage, fileName: string): StoredReferenceImage | null {
@@ -237,6 +237,11 @@ function taskDataToStoredImage(image: StoredImage, task: ImageTask): StoredImage
       taskStatus: undefined,
       progress: undefined,
       error: task.error || "生成失败",
+      errorCode: task.error_code,
+      errorStage: task.error_stage,
+      diagnosticId: task.diagnostic_id,
+      upstreamStatus: task.upstream_status,
+      retryable: task.retryable,
       durationMs: task.duration_ms,
     };
   }
@@ -461,6 +466,7 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
 
   const config = useSettingsStore((state) => state.config);
   const imageTimeoutRetrySecs = Number(config?.image_timeout_retry_secs || 30);
+  const isDirectMode = Boolean(config?.openai_api_key_configured);
 
   const [imagePrompt, setImagePrompt] = useState("");
   const [imageCount, setImageCount] = useState("3");
@@ -469,8 +475,8 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
   const [imageWidth, setImageWidth] = useState("1024");
   const [imageHeight, setImageHeight] = useState("1024");
   const [imageQuality, setImageQuality] = useState("auto");
-  const [imageModel, setImageModel] = useState<ImageModel>("gpt-image-2");
-  const [imageModels, setImageModels] = useState<ImageModel[]>(["gpt-image-2"]);
+  const [imageModel, setImageModel] = useState<ImageModel>("gpt-image-2.5-flare");
+  const [imageModels, setImageModels] = useState<ImageModel[]>(["gpt-image-2.5-flare"]);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [referenceImageFiles, setReferenceImageFiles] = useState<File[]>([]);
   const [referenceImages, setReferenceImages] = useState<StoredReferenceImage[]>([]);
@@ -705,7 +711,7 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
         });
       } catch {
         if (!cancelled) {
-          setImageModels(["gpt-image-2"]);
+          setImageModels(["gpt-image-2.5-flare"]);
         }
       }
     };
@@ -721,13 +727,17 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
       setAvailableQuota("--");
       return;
     }
+    if (isDirectMode) {
+      setAvailableQuota("直连");
+      return;
+    }
     try {
       const data = await fetchAccounts();
       setAvailableQuota(formatAvailableQuota(data.items));
     } catch {
       setAvailableQuota((prev) => (prev === "加载中..." ? "--" : prev));
     }
-  }, [isAdmin]);
+  }, [isAdmin, isDirectMode]);
 
   useEffect(() => {
     if (didLoadQuotaRef.current) {
@@ -1734,6 +1744,7 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
             referenceImages={referenceImages}
             textareaRef={textareaRef}
             fileInputRef={fileInputRef}
+            isDirectMode={isDirectMode}
             onPromptChange={setImagePrompt}
             onImageCountChange={(value) => setImageCount(value ? clampImageCount(value) : "")}
             onImageRatioChange={setImageRatio}
